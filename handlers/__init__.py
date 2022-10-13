@@ -1,6 +1,6 @@
 import psycopg2
 import aiogram
 
-import initBot
 
-import start_handlers
+import handlers.initBot
+from . import start_handlers
