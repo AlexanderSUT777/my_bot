@@ -1,10 +1,12 @@
 # Здесь располагается класс для записи в базу данных значений из получаемого аргумента message.
+import datetime
 
+import aiogram
 import psycopg2
 
 
 class InsertIntoDatabase():
-    def __init__(self, message) -> None:
+    def __init__(self, message: aiogram.types.Message) -> None:
         '''Инициализируем экземпляры класса и атрибуты'''
         self.message = message
         self.conn = psycopg2.connect('dbname=records user=postgres')
@@ -54,17 +56,6 @@ class InsertIntoDatabase():
 
         self.conn.commit()
         print('Данные сохранены')
-    
-    def save_time(self, date):
-        '''Сохраняем время в таблицу''' 
-
-        cur = self.conn.cursor()
-        cur.execute('''UPDATE timetable 
-        SET time = %s
-        WHERE day = %s;''', (self.message.text, date))
-
-        self.conn.commit()
-        print('Данные сохранены')
 
     def repeat_save_time(self, date):
         '''Метод для повторного сохранения дня и времени'''
@@ -74,3 +65,64 @@ class InsertIntoDatabase():
 
         self.conn.commit()
         print('Данные сохранены')
+    
+    def get_record(self):
+        '''Метод для получения всех дат записей в текущий сеанс'''
+        cur = self.conn.cursor()
+        cur.execute('''SELECT day, time FROM timetable''')
+        result = cur.fetchall()
+
+        print('Данные получены')
+        return result      
+    
+    def delete_record(self, data):
+        '''Удаляет запись из таблицы timetable'''
+        cur = self.conn.cursor()
+        data_full = data.split()
+
+        # Получаем отдельно объект времени и дня
+        time = datetime.datetime.strptime(data_full[0], "%H:%M:%S").time()
+        day = datetime.datetime.strptime(data_full[1], "%Y-%m-%d").date()
+
+        # Удаляем
+        cur.execute('''DELETE FROM timetable
+        WHERE time = %s AND day = %s''', (time, day))
+
+        # Сохраняем
+        self.conn.commit()
+        print('Данные удалены')
+    
+    def get_info_timetable(self, date):
+        '''Получает всю информацию из таблицы timetable'''
+        cur = self.conn.cursor()
+        data_full = date.split()
+
+        # Получаем объекты времени и дня
+        time = datetime.datetime.strptime(data_full[0], "%H:%M:%S").time()
+        day = datetime.datetime.strptime(data_full[1], "%Y-%m-%d").date()
+
+        # Формируем запрос
+        cur.execute("""SELECT * FROM timetable
+        WHERE time = %s AND day = %s""", (time, day))
+        result = cur.fetchall()
+        return result
+
+    def get_phone_number(self):
+        '''Возвращает номер телефона через user_id'''
+
+        cur = self.conn.cursor()
+        cur.execute('''SELECT phone_number
+        FROM users WHERE user_id = %s''', (self.message.from_user.id,))
+        print('Данные получены')
+        result = cur.fetchall()
+        return result
+    
+    def get_name_user(self, user_id):
+        '''Возвращает ФИО юзера'''
+
+        cur = self.conn.cursor()
+        cur.execute('''SELECT lastfirstname
+        FROM users WHERE user_id = %s''', (user_id,))
+
+        result = cur.fetchall()
+        return result

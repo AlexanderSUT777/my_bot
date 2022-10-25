@@ -22,8 +22,8 @@ def create_timetable():
 
     cur.execute('''CREATE TABLE timetable(
         user_id integer,
-        day text,
-        time text,
+        day date,
+        time time,
         status text,
         FOREIGN KEY(user_id)
         REFERENCES users(user_id)
