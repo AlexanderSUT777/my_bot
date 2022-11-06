@@ -1,12 +1,48 @@
+import datetime
+from distutils.cmd import Command
+
 from aiogram.dispatcher.filters.state import StatesGroup, State
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.start_handlers.imports import *
+from settings.convert_date import convering_date
+from handlers.start_handlers.function_filters import filter_for_query_handler_delete, get_admin_id, filter_callback_no
+from handlers.start_handlers.function_filters import filter_callback_yes
+
+# operative_storage = {}
+# waiting_users = []
 
 # Создаём класс для FSM
 class Form(StatesGroup):
     get_number_state = State() # Для получения мобильного номера
     get_information_state = State() # для получения имени-фамилии
     get_date_state = State() # для получения даты записи.
+    get_answer = State() # Для получения ответа Исполнителя
+
+async def create_timetable_inline(message, state: aiogram.dispatcher.FSMContext):
+    text_for_none = 'Нет времени доступного для записи. Обратитесь позже'
+    
+    # Получаем даты
+    get_data = InsertIntoDatabase(message)
+    dates = get_data.get_full_record()
+    if dates == None:
+        await message.answer(text_for_none)
+        return None
+    # Перебираем полученные значения, формируем инлайн кнопки.
+    button_list = []
+    for date in dates:
+        if 'Занято' not in date:
+            # В text возвращается готовая строка
+            text = convering_date(date=date[1], time=date[2])
+            # Тут создаются объекты кнопок
+            button = InlineKeyboardButton(f'{text}', callback_data=(f"{str(date[2])} {str(date[1])}"))
+            button_list.append(button)
+
+            await state.update_data(date=f"{str(date[2])} {str(date[1])}")
+            await Form.get_date_state.set()
+    # А тут объект клавиатуры с распаковкой кнопок
+    inline_keyboard = InlineKeyboardMarkup(row_width=1).add(*button_list)
+    return inline_keyboard  
 
 # Тут мы получаем номер клиента
 @dp.message_handler(state=Form.get_information_state)
@@ -35,28 +71,85 @@ async def get_phone_number(message: aiogram.types.Message,
     '''Хэндлер, который сохраняет номер телефона клиента'''
 
     # текст сообщения
-    text = ('Номер мобильного телефона сохранён. По нему с вами свяжется'
+    text_message = ('Номер мобильного телефона сохранён. По нему с вами свяжется'
             ' мастер. Далее - выберите дату, на которую у мастера'
             ' есть свободное место')
     
-    # Сохраняем в переменную состояния мобильный телефон
-    await state.update_data(phone_number=message.text)
+    inline_keyboard = await create_timetable_inline(message=None, state=state) 
 
     # Выводим сообщение и переходим к финалу
-    await message.answer(text)
+    await message.answer(text_message, reply_markup=inline_keyboard)
     await Form.get_date_state.set() 
 
     # Сохраняем номер телефона
-    insert_in_db = InsertIntoDatabase(message)
-    insert_in_db.save_phone_number()
+    InsertIntoDatabase(message).save_phone_number()
 
 
-@dp.message_handler(state=Form.get_date_state)
-async def change_date(message: aiogram.types.Message,
-                    state: aiogram.dispatcher.FSMContext):
-    '''Хэндлер записывает дату записи клиента.'''
+@dp.callback_query_handler(state=Form.get_date_state)
+async def save_user_date(callback_query: aiogram.types.CallbackQuery,
+    state: aiogram.dispatcher.FSMContext):
+    """
+    Хэндлер реагирует на нажатие кнопки, когда клиенту
+    предложено выбрать свободный день для записи.
+    Нажатие на день сохраняет его в базе данных с пометкой "занято".
+   """
+    InsertIntoDatabase(message=None).save_active_status(date=callback_query.data,
+             user_id=callback_query.from_user.id)
+    await callback_query.answer('Исполнителю отправлено уведомление. Ожидайте '
+    ' ответа от Исполнителя.', show_alert=True)
     
-    # Здесь тесное взаимодействие с базой данных, так что этот этап - на потом.
-    # Номер телефона служит уникальным идентификатором
-    # Нужно сохранить через переменную состояния номер телефона и имя-фамилию.
-    #  А так же одну из предложенных дат.
+    admin_id = get_admin_id()
+    # Текст, который будет отправлен админу и кнопки
+    name_and_number = InsertIntoDatabase(message=None).get_name_and_phone_number(
+                user_id=callback_query.from_user.id)
+
+    date = callback_query.data
+    date = date.split()
+    time = datetime.datetime.strptime(date[0], "%H:%M:%S").time()
+    day = datetime.datetime.strptime(date[1], "%Y-%m-%d").date()
+
+    date_text = convering_date(date=day, time=time)
+
+    text = (f'У вас новая заявка на {date_text}. Это {name_and_number[0][0]} - {name_and_number[0][1]}')
+    # Создаём две инлайн кнопки для принятия или отмены заявки:
+    button_list = []
+
+    button_yes = InlineKeyboardButton('Принять заявку', callback_data=f'yes {callback_query.from_user.id} {callback_query.data}')
+    button_no = InlineKeyboardButton('Отменить заявку', callback_data=f'no {callback_query.from_user.id} {callback_query.data}')
+    button_list.append(button_yes)
+    button_list.append(button_no)
+    inline_keyboard = InlineKeyboardMarkup(row_width=3).add(*button_list)
+
+    # operative_storage[f'{callback_query.from_user.id}'] = callback_query.data
+    # waiting_users.append(callback_query.from_user.id)
+
+    await bot.send_message(chat_id=admin_id, text=text, reply_markup=inline_keyboard)
+    await state.finish()
+
+@dp.callback_query_handler(lambda c: filter_callback_no(c.data))
+async def delete_user_from_record(callback_query: aiogram.types.CallbackQuery):
+    '''
+    Колбэк реагирует на нажатие Исполнителем кнопки "Отменить заявку". Меняет статус заявки.
+    '''
+    string = callback_query.data.split()
+    await callback_query.answer('Заявка отклонена.')
+    user_id = InsertIntoDatabase(message=callback_query.message).get_info_timetable(date=f'{string[2]} {string[3]}')
+    InsertIntoDatabase(message=None).update_status_none(date=f'{string[2]} {string[3]}')
+    
+    await bot.send_message(chat_id=user_id[0][0], text='Ваша заявка отклонена.')
+    
+
+@dp.callback_query_handler(lambda c: filter_callback_yes(c.data))
+async def invite_user(callback_query: aiogram.types.CallbackQuery):
+    """
+    Колбэк реагирует на нажатие Исполнителем кнопки "Принять заявку". Заявка не изменяется.
+    Клиенту приходит сообщение
+    """
+    string = callback_query.data.split()
+    # Получаем user_id для отправки потом ему сообщения. Переменная содержит в себе кортеж со списками
+    user_id = InsertIntoDatabase(message=callback_query.message).get_info_timetable(date=f'{string[2]} {string[3]}')
+    # Ответ пользователю
+    await callback_query.answer('Заявка принята.')
+    await bot.send_message(chat_id=user_id[0][0], text='Ваша заявка принята')
+    await bot.answer_callback_query(callback_query.id)
+

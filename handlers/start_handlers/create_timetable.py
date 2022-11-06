@@ -200,9 +200,9 @@ async def info_day(callback_query: aiogram.types.CallbackQuery):
     выбранный день из списка
     '''
         # Удаляем запись из базы данных
-    delete_record = InsertIntoDatabase(message=None)
-    delete_record.delete_record(data=callback_query.data)
-    # Даём ответ клиенту
+    InsertIntoDatabase(message=None).delete_record(data=callback_query.data)
+    # Даём ответ клиент
     await bot.answer_callback_query(callback_query.id)
     # Оповещаем клиента об удалении
-    await callback_query.answer(show_alert=True)
+    await callback_query.answer('Удалено.')
+ 

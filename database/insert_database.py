@@ -73,7 +73,15 @@ class InsertIntoDatabase():
         result = cur.fetchall()
 
         print('Данные получены')
-        return result      
+        return result
+    
+    def get_record_for_client(self):
+        '''Метод для предоставления клиенту свободных дней записи'''
+        cur = self.conn.cursor()
+        cur.execute('''SELECT day, time, status FROM timetable''')
+        print('Данные получены')
+        result = cur.fetchall()
+        return result
     
     def delete_record(self, data):
         '''Удаляет запись из таблицы timetable'''
@@ -107,12 +115,12 @@ class InsertIntoDatabase():
         result = cur.fetchall()
         return result
 
-    def get_phone_number(self):
+    def get_phone_number(self, user_id):
         '''Возвращает номер телефона через user_id'''
 
         cur = self.conn.cursor()
         cur.execute('''SELECT phone_number
-        FROM users WHERE user_id = %s''', (self.message.from_user.id,))
+        FROM users WHERE user_id = %s''', (user_id,))
         print('Данные получены')
         result = cur.fetchall()
         return result
@@ -126,3 +134,56 @@ class InsertIntoDatabase():
 
         result = cur.fetchall()
         return result
+    
+    def save_active_status(self, date, user_id):
+        """Изменяет статус записи"""
+        cur = self.conn.cursor()
+        data_full = date.split()
+        # Получаем объекты времени и дня
+        time = datetime.datetime.strptime(data_full[0], "%H:%M:%S").time()
+        day = datetime.datetime.strptime(data_full[1], "%Y-%m-%d").date()
+
+        cur.execute('''UPDATE timetable 
+        SET status = %s, user_id = %s
+        WHERE time = %s and day = %s''', ('Занято', user_id, time, day))
+        print('Данные изменены')
+        self.conn.commit()
+
+    def get_full_record(self):
+        """
+        Метод достает все значения для формирования только свободных записей
+        для создания инлайн кнопок
+        """
+        cur = self.conn.cursor()
+        cur.execute('''SELECT * FROM timetable''')
+
+        result = cur.fetchall()
+        return result
+    
+    def get_name_and_phone_number(self, user_id):
+        '''
+        Достаём из базы данных имя и номер мобильного телефона
+        '''
+        cur = self.conn.cursor()
+        cur.execute('''SELECT lastfirstname, phone_number
+        FROM users
+        WHERE user_id = %s''', (user_id,))
+
+        result = cur.fetchall()
+        return result
+    
+    def update_status_none(self, date):
+        '''
+        Данный метод удаляет статус у записи
+        '''
+        cur = self.conn.cursor()
+        data_full = date.split()
+        # Получаем объекты времени и дня
+        time = datetime.datetime.strptime(data_full[0], "%H:%M:%S").time()
+        day = datetime.datetime.strptime(data_full[1], "%Y-%m-%d").date()
+
+        cur.execute('''UPDATE timetable
+        SET status = %s, user_id = %s
+        WHERE day = %s and time = %s''', (None, None, day, time))
+        print('Статус изменён')
+        self.conn.commit()

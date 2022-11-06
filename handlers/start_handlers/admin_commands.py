@@ -38,7 +38,7 @@ async def show_timetable(message: aiogram.types.Message):
             text_pre_inline = ('Итак, вот твоё составленное расписание. Нажми на интересующую тебя дату для перехода '
             'в режим настройки.')
             await message.answer(text_pre_inline, reply_markup=inline_keyboard)
-            text_for_warning = ('Для выхода из режима просмотра расписания введи /endt')
+            text_for_warning = ('Для выхода из режима просмотра расписания введи /end')
             await message.answer(text_for_warning, reply_markup=ReplyKeyboardRemove())
         
             await InlineStates.get_info.set()
@@ -70,20 +70,19 @@ async def get_info_inline(callback_query: aiogram.types.CallbackQuery):
         text = convering_date(date=info[1], time=info[2])
         button_info = InlineKeyboardButton(f'{text}', callback_data='info')
         # Получение номера мобильного телефона
-        phone_number_db = InsertIntoDatabase(callback_query.message).get_phone_number()
+        phone_number_db = InsertIntoDatabase(message=None).get_phone_number(user_id=info[0])
         for num in phone_number_db:
             phone_number = num[0]
 
         # Кнопка с информацией о том, кто записан
         if info[0] == None and info[3] == None:
             button = InlineKeyboardButton(f'Никто не записан - свободно', callback_data='None')
-        elif info[0] != None:
+        elif info[0] != None or info[3] != None:
             # Имя записанного
             name_db = InsertIntoDatabase(message=None).get_name_user(user_id=info[0])
             for name_list in name_db:
                 name = name_list[0]    
             await callback_query.message.edit_text(f'{name}')
-            
             button = InlineKeyboardButton(f'Запись на день - {phone_number}', callback_data=phone_number)
         # Кнопка "Назад"
         button_back = InlineKeyboardButton('Назад', callback_data='back')
@@ -131,6 +130,9 @@ async def back_inline(callback_query: aiogram.types.CallbackQuery, state: aiogra
         inline_keyboard = InlineKeyboardMarkup(row_width=1).add(*button_list)
         # Даём ответ клиенту и изменяем клавиатуру под сообщением, возвращаемся в состояние
         # ожидания выбора дня для получения информации
+        text_pre_inline = ('Итак, вот твоё составленное расписание. Нажми на интересующую тебя дату для перехода '
+        'в режим настройки.')
+        await callback_query.message.edit_text(text_pre_inline)
         await callback_query.message.edit_reply_markup(reply_markup=inline_keyboard)
         await bot.answer_callback_query(callback_query.id)
         await InlineStates.get_info.set()
@@ -153,7 +155,7 @@ async def delete_record_in_timetable(callback_query: aiogram.types.CallbackQuery
     get_data = callback_query.data
     # Удаляем записи, отвечаем пользователю
     InsertIntoDatabase(message=None).delete_record(get_data)
-    await callback_query.answer('Удалено', show_alert=True)
+    await callback_query.answer('Удалено')
     await bot.answer_callback_query(callback_query.id)
 
 
@@ -164,7 +166,7 @@ async def delete_record_in_timetable(callback_query: aiogram.types.CallbackQuery
 async def escape_from_looking_timetable(message: aiogram.types.Message,
 state: aiogram.dispatcher.FSMContext):
     '''
-    Хэндлер реагирует на команду endt. Досрочно закрывает все состояния.
+    Хэндлер реагирует на команду end. Досрочно закрывает все состояния.
     '''
     await message.answer('Ты вышел из режима')
     await state.finish()
