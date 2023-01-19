@@ -1,5 +1,4 @@
 import datetime
-from distutils.cmd import Command
 
 from aiogram.dispatcher.filters.state import StatesGroup, State
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -9,8 +8,6 @@ from settings.convert_date import convering_date
 from handlers.start_handlers.function_filters import filter_for_query_handler_delete, get_admin_id, filter_callback_no
 from handlers.start_handlers.function_filters import filter_callback_yes
 
-# operative_storage = {}
-# waiting_users = []
 
 # Создаём класс для FSM
 class Form(StatesGroup):
@@ -49,42 +46,48 @@ async def create_timetable_inline(message, state: aiogram.dispatcher.FSMContext)
 async def get_information_user(message: aiogram.types.Message,
                             state: aiogram.dispatcher.FSMContext):
     '''Хендлер, который сохраняет имя-фамилию клиента.'''
-
+    if message.text == '/end':
+        await state.finish()
+        await message.answer('Вы прервали процедуру регистрации. Для возврата к регистрации напишите /start')
+        return 0
     # Текст сообщения
     text = ('Имя записали. Дальше - номер мобильного телефона. Напишите '
-            'его следующим сообщением, в формате +7:')
+            'его следующим сообщением, в формате +7')
     # Вот в этой строчке мы в переменную состояния сохраняем информацию
     # о пользователе:
-    await state.update_data(information_user=message.text)
+    await state.update_data(name_user=message.text)
 
     # Выводим сообщение и переходим к следующему состоянию.
     await message.answer(text)
     await Form.get_number_state.set()
 
     # Попытка сохранить данные
-    insert_in_db = InsertIntoDatabase(message)
-    insert_in_db.save_username_user()
+    # insert_in_db = InsertIntoDatabase(message)
+    # insert_in_db.save_username_user()
 
 @dp.message_handler(state=Form.get_number_state)
 async def get_phone_number(message: aiogram.types.Message,
                         state: aiogram.dispatcher.FSMContext):
     '''Хэндлер, который сохраняет номер телефона клиента'''
-
+    if message.text == '/end':
+        await state.finish()
+        await message.answer('Вы прервали процедуру регистрации. Для возврата к регистрации напишите /start')
+        return 0
     # текст сообщения
     text_message = ('Номер мобильного телефона сохранён. По нему с вами свяжется'
-            ' мастер. Далее - выберите дату, на которую у мастера'
+            ' Исполнитель. Далее - выберите дату, на которую у Исполнитель'
             ' есть свободное место')
     
     inline_keyboard = await create_timetable_inline(message=None, state=state) 
-
+    data_state = await state.get_data()
     # Выводим сообщение и переходим к финалу
+    # await state.update_data(phone_number=message.text)
+    InsertIntoDatabase(message).save_phone_number(name=data_state['name_user']) 
     await message.answer(text_message, reply_markup=inline_keyboard)
     await Form.get_date_state.set() 
 
-    # Сохраняем номер телефона
-    InsertIntoDatabase(message).save_phone_number()
-
-
+    # Сохраняем информацию о пользователе
+    
 @dp.callback_query_handler(state=Form.get_date_state)
 async def save_user_date(callback_query: aiogram.types.CallbackQuery,
     state: aiogram.dispatcher.FSMContext):
@@ -92,7 +95,7 @@ async def save_user_date(callback_query: aiogram.types.CallbackQuery,
     Хэндлер реагирует на нажатие кнопки, когда клиенту
     предложено выбрать свободный день для записи.
     Нажатие на день сохраняет его в базе данных с пометкой "занято".
-   """
+    """
     InsertIntoDatabase(message=None).save_active_status(date=callback_query.data,
              user_id=callback_query.from_user.id)
     await callback_query.answer('Исполнителю отправлено уведомление. Ожидайте '
@@ -110,7 +113,8 @@ async def save_user_date(callback_query: aiogram.types.CallbackQuery,
 
     date_text = convering_date(date=day, time=time)
 
-    text = (f'У вас новая заявка на {date_text}. Это {name_and_number[0][0]} - {name_and_number[0][1]}')
+    text = (f'У вас новая заявка на {date_text}.\nЭто {name_and_number[0][0]}.\nНомер телефона: {name_and_number[0][1]}'
+    f'\nТелеграм: @{name_and_number[0][2]}')
     # Создаём две инлайн кнопки для принятия или отмены заявки:
     button_list = []
 
@@ -132,7 +136,7 @@ async def delete_user_from_record(callback_query: aiogram.types.CallbackQuery):
     Колбэк реагирует на нажатие Исполнителем кнопки "Отменить заявку". Меняет статус заявки.
     '''
     string = callback_query.data.split()
-    await callback_query.answer('Заявка отклонена.')
+    await callback_query.message.edit_text('Заявка отклонена.', reply_markup=None)
     user_id = InsertIntoDatabase(message=callback_query.message).get_info_timetable(date=f'{string[2]} {string[3]}')
     InsertIntoDatabase(message=None).update_status_none(date=f'{string[2]} {string[3]}')
     
@@ -143,13 +147,20 @@ async def delete_user_from_record(callback_query: aiogram.types.CallbackQuery):
 async def invite_user(callback_query: aiogram.types.CallbackQuery):
     """
     Колбэк реагирует на нажатие Исполнителем кнопки "Принять заявку". Заявка не изменяется.
-    Клиенту приходит сообщение
+    Клиенту приходит сообщение, мастеру приходит уведомление о том что он принял заявку
     """
     string = callback_query.data.split()
     # Получаем user_id для отправки потом ему сообщения. Переменная содержит в себе кортеж со списками
     user_id = InsertIntoDatabase(message=callback_query.message).get_info_timetable(date=f'{string[2]} {string[3]}')
     # Ответ пользователю
-    await callback_query.answer('Заявка принята.')
+    await callback_query.message.edit_text('Заявка принята', reply_markup=None)
     await bot.send_message(chat_id=user_id[0][0], text='Ваша заявка принята')
     await bot.answer_callback_query(callback_query.id)
 
+@dp.message_handler(commands=['end'], state=Form.get_date_state)
+@dp.message_handler(commands=['end'], state=Form.get_information_state)
+@dp.message_handler(commands=['end'], state=Form.get_number_state)
+async def reset_state(message: aiogram.types.Message, state: aiogram.dispatcher.FSMContext):
+    '''При подаче заявки на запись может позволить прекратить заполнение заявки'''
+    await state.finish()
+    await message.answer('Вы прервали регистрацию. Воспользуйтесь /start для возобновления этой процедуры.')

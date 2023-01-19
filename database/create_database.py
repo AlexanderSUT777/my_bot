@@ -9,10 +9,10 @@ def create_users_table():
     '''
 
     cur.execute("""CREATE TABLE users(
-        user_id integer PRIMARY KEY,
+        user_id bigint PRIMARY KEY,
         username text NOT NULL,
         lastfirstname text NOT NULL,
-        phone_number char(16));""")
+        phone_number char(16));""") 
     conn.commit()
     print('Таблица users создана')
 
@@ -21,7 +21,7 @@ def create_timetable():
     '''Создаёт таблицу для расписания'''
 
     cur.execute('''CREATE TABLE timetable(
-        user_id integer,
+        user_id bigint,
         day date,
         time time,
         status text,

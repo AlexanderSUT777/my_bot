@@ -1,7 +1,6 @@
 # Файл с командами для админа
-from ast import Delete
-from dis import show_code
 import json
+import datetime
 
 from aiogram.dispatcher.filters.state import StatesGroup, State
 from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
@@ -26,6 +25,11 @@ class InlineStates(StatesGroup):
     inline_buttons_tape = State()
     back = State()
 
+
+def create_date_object(date_string):
+    '''Создает из текста объект времени'''
+    date = datetime.datetime.strptime(date_string, '%d.%m.%Y')
+    return date
 
 def return_kb():
     """Создаёт клавиатуру"""
@@ -54,30 +58,37 @@ def is_admin(message: aiogram.types.Message) -> bool:
             is_admin = True
     return is_admin
 
-@dp.message_handler(commands=['create'])
+@dp.message_handler(lambda message: is_admin(message), commands=['create'])
 async def start_create_timetable(message: aiogram.types.Message,
                                 state: aiogram.dispatcher.FSMContext):
     '''Хэндлер начинает работу с созданием расписания'''
 
-    admin = is_admin(message=message)
-    # Если флаг True - всё ок. Если нет - ответа нет.
-    if admin:
+
         
-        warning_text = ('Прежде чем начать составлять'
+    warning_text = ('Прежде чем начать составлять'
         ' расписание для клиентов, запомни простые правила:'
         '\n1. Делай всё адекватно.'
         '\n2. Если у тебя что-то не получилось, смотри пункт 1'
         '\n3. Если у тебя и правда не получается, репорт @legannyst'
-        '\n Да прибудет с тобою сила!')
+        '\nДа прибудет с тобою сила!')
 
-        text = ('Напиши число, в которое готов принять клиентов.'
-        ' Формат данных будет в виде год.месяц.число, то есть'
-        ' 2022.10.15 - 15 октября.')
+    text = ('Напиши число, в которое готов принять клиентов.'
+        ' Дата должна быть записана в в виде ЧЧ.ММ.ГГГГ')
+        
+    try:
+        date = message.text.split('.')
         await message.answer(warning_text)
         await message.answer(text)
         await TimetableForm.day.set()
-    else:
-        return None
+    except ValueError:
+        await message.answer('Введи дату в правильном формате.')
+        return
+    except IndexError:
+        await message.answer('Введи дату в правильном формате.')
+        return
+        
+
+
 
 @dp.message_handler(state=TimetableForm.day)
 async def save_day(message: aiogram.types.Message,
@@ -106,13 +117,16 @@ async def save_time(message: aiogram.types.Message,
     # Получаем значение прошлого сообщения
     # Оно нужно для записи в таблицу
     date = await state.get_data()
+    date_object = create_date_object(date_string=date['date'])
+    
     try:
-        insert.repeat_save_time(date=date['date'])
+        insert.repeat_save_time(date=date_object)
     except Exception as error:
         await message.answer('Что-то пошло не так.')
         await message.answer('Давай сначала и нормально')
-
         print(f'{error} в save_time' )
+        return
+        
 
     text = ('Время записано.'
     ' Итак, теперь у тебя три варианта развития событий:'
@@ -199,10 +213,11 @@ async def info_day(callback_query: aiogram.types.CallbackQuery):
     Хэндлер реагирует на нажатие кнопки и удаляет
     выбранный день из списка
     '''
-        # Удаляем запись из базы данных
+    # Удаляем запись из базы данных
     InsertIntoDatabase(message=None).delete_record(data=callback_query.data)
     # Даём ответ клиент
-    await bot.answer_callback_query(callback_query.id)
-    # Оповещаем клиента об удалении
     await callback_query.answer('Удалено.')
+    await bot.answer_callback_query(callback_query.id)
+    # Оповещаем Исполгнителя об удалении
+    
  

@@ -1,4 +1,3 @@
-from subprocess import call
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from handlers.start_handlers.function_filters import filter_for_query_handler_delete as filter_for_delete
 

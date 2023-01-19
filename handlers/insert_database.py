@@ -5,36 +5,37 @@ import aiogram
 import psycopg2
 
 
+
 class InsertIntoDatabase():
     def __init__(self, message: aiogram.types.Message) -> None:
         '''Инициализируем экземпляры класса и атрибуты'''
         self.message = message
         self.conn = psycopg2.connect('dbname=records user=postgres')
 
-    def save_username_user(self) -> None:
-        '''
-        Сохраняем имя-фамилию в базу данных, 
-        а также сохраняем username телеграма
-        '''
-        cur = self.conn.cursor()
+    # def save_username_user(self) -> None:
+    #     '''
+    #     Сохраняем имя-фамилию в базу данных, 
+    #     а также сохраняем username телеграма
+    #     '''
+    #     cur = self.conn.cursor()
 
-        cur.execute(f'''INSERT INTO 
-        users(user_id, username, lastfirstname)
-        VALUES(%s, %s, %s);
-        ''', (self.message.from_user.id, self.message.from_user.username, self.message.text))
+    #     cur.execute(f'''INSERT INTO 
+    #     users(user_id, username, lastfirstname)
+    #     VALUES(%s, %s, %s);
+    #     ''', (self.message.from_user.id, self.message.from_user.username, self.message.text))
 
-        self.conn.commit()
-        print('Данные сохранены')
+    #     self.conn.commit()
+    #     print('Данные сохранены')
 
-    def save_phone_number(self) -> None:
+    def save_phone_number(self, name) -> None:
         '''
         Сохраняем номер телефона клиента в базу данных
         '''
         cur = self.conn.cursor()
 
-        cur.execute(f'''UPDATE users
-        SET phone_number = %s
-        WHERE user_id = %s;''', (self.message.text, self.message.from_user.id))
+        cur.execute(f'''INSERT INTO users(user_id, username, lastfirstname, phone_number)
+        VALUES(%s, %s, %s, %s)''', (self.message.from_user.id, self.message.from_user.username,
+        name, self.message.text))
 
         self.conn.commit()
         print('Данные сохранены')
@@ -165,7 +166,7 @@ class InsertIntoDatabase():
         Достаём из базы данных имя и номер мобильного телефона
         '''
         cur = self.conn.cursor()
-        cur.execute('''SELECT lastfirstname, phone_number
+        cur.execute('''SELECT lastfirstname, phone_number, username
         FROM users
         WHERE user_id = %s''', (user_id,))
 
@@ -186,4 +187,4 @@ class InsertIntoDatabase():
         SET status = %s, user_id = %s
         WHERE day = %s and time = %s''', (None, None, day, time))
         print('Статус изменён')
-        self.conn.commit()
+        self.conn.commit()  
